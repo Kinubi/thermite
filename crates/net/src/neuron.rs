@@ -1,22 +1,17 @@
 use math::tensor::Tensor;
 
 pub struct Neuron {
-    pub weights: Vec<f64>,
+    pub weights: Tensor,
     pub bias: f64,
 }
 
 impl Neuron {
     pub fn new(weights: Tensor, bias: f64) -> Self {
-        Neuron { weights: weights.data().clone(), bias }
+        Neuron { weights, bias }
     }
 
     pub fn forward(&self, inputs: Tensor) -> f64 {
-        let sum: f64 = self.weights
-            .iter()
-            .zip(inputs.data().iter())
-            .map(|(w, i)| w * i)
-            .sum();
-        sum + self.bias
+        self.weights.dot(&inputs) + self.bias
     }
 }
 

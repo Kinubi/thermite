@@ -28,20 +28,56 @@ impl Layer for Linear {
     }
 
     fn add_neuron(&mut self, neuron: Neuron) {
-        if neuron.weights.len() == 0 {
+        if neuron.weights.shape()[0] == 0 {
             panic!("Neuron must have at least one weight");
         }
-        if self.neurons.len() > 0 && neuron.weights.len() != self.neurons[0].weights.len() {
+        if
+            self.neurons.len() > 0 &&
+            neuron.weights.shape()[0] != self.neurons[0].weights.shape()[0]
+        {
             panic!("All neurons in a layer must have the same number of weights");
         }
         self.neurons.push(neuron);
-        self.layer_dim = [self.neurons.len(), self.neurons[0].weights.len()];
+        self.layer_dim = [self.neurons.len(), self.neurons[0].weights.shape()[0]];
     }
 
     fn forward(&self, inputs: Tensor) -> Tensor {
-        if inputs.shape()[0] != self.layer_dim[1] {
-            panic!("Input size must match the number of neurons in the layer");
+        if self.neurons.is_empty() {
+            panic!("Layer has no neurons");
         }
+
+        let expected_inputs = self.layer_dim[1];
+        match inputs.shape().as_slice() {
+            [n] => {
+                if *n != expected_inputs {
+                    panic!("Input size must match the number of weights in each neuron");
+                }
+            }
+            [_batch, n] => {
+                if *n != expected_inputs {
+                    panic!("Input size must match the number of weights in each neuron");
+                }
+            }
+            _ => panic!("Linear forward expects a 1D or 2D tensor"),
+        }
+
+        if inputs.shape().len() == 2 {
+            let cols = inputs.shape()[1];
+            let outputs: Vec<Vec<f64>> = inputs
+                .data()
+                .chunks(cols)
+                .map(|row| {
+                    let row_tensor = Tensor::from_vec(row.to_vec());
+                    self.neurons
+                        .iter()
+                        .map(|neuron| neuron.forward(row_tensor.clone()))
+                        .collect()
+                })
+                .collect();
+
+            return Tensor::from_vec2(outputs);
+        }
+
         Tensor::from_vec(
             self.neurons
                 .iter()
