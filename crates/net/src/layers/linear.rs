@@ -6,6 +6,8 @@ use crate::neuron::Neuron;
 pub struct Linear {
     neurons: Vec<Neuron>,
     layer_dim: [usize; 2],
+    weights: Tensor,
+    biases: Vec<f64>,
 }
 
 impl Default for Linear {
@@ -13,6 +15,8 @@ impl Default for Linear {
         Self {
             neurons: Vec::new(),
             layer_dim: [0, 0],
+            weights: Tensor::zeros(vec![0, 0]),
+            biases: Vec::new(),
         }
     }
 }
@@ -20,6 +24,7 @@ impl Default for Linear {
 impl Layer for Linear {
     fn new(input_len: usize, num_neurons: usize) -> Self {
         let mut layer = Linear::default();
+        layer.weights = Tensor::zeros(vec![0, input_len]);
         for _ in 0..num_neurons {
             let neuron = Neuron::new(Tensor::zeros(vec![input_len]), 0.0);
             layer.add_neuron(neuron);
@@ -39,6 +44,8 @@ impl Layer for Linear {
         }
         self.neurons.push(neuron);
         self.layer_dim = [self.neurons.len(), self.neurons[0].weights.shape()[0]];
+        self.weights.push(self.neurons.last().unwrap().weights.clone());
+        self.biases.push(self.neurons.last().unwrap().bias);
     }
 
     fn forward(&self, inputs: Tensor) -> Tensor {
@@ -61,28 +68,47 @@ impl Layer for Linear {
             _ => panic!("Linear forward expects a 1D or 2D tensor"),
         }
 
-        if inputs.shape().len() == 2 {
-            let cols = inputs.shape()[1];
-            let outputs: Vec<Vec<f64>> = inputs
-                .data()
-                .chunks(cols)
-                .map(|row| {
-                    let row_tensor = Tensor::from_vec(row.to_vec());
-                    self.neurons
-                        .iter()
-                        .map(|neuron| neuron.forward(row_tensor.clone()))
-                        .collect()
-                })
-                .collect();
+        let bias = Tensor::from_vec(self.biases.clone());
 
-            return Tensor::from_vec2(outputs);
+        let mut out = match inputs.shape().as_slice() {
+            [n] => {
+                if *n != expected_inputs {
+                    panic!("Input size must match the number of weights in each neuron");
+                }
+                self.weights.matmul(&inputs)
+            }
+            [_batch, n] => {
+                if *n != expected_inputs {
+                    panic!("Input size must match the number of weights in each neuron");
+                }
+                inputs.matmul(&self.weights.transpose())
+            }
+            _ => panic!("Linear forward expects a 1D or 2D tensor"),
+        };
+
+        let out_shape = out.shape().clone();
+        match out_shape.as_slice() {
+            [out_dim] => {
+                if *out_dim != bias.shape()[0] {
+                    panic!("Bias dimension must match output dimension");
+                }
+                out += &bias;
+            }
+            [batch, out_dim] => {
+                if *out_dim != bias.shape()[0] {
+                    panic!("Bias dimension must match output dimension");
+                }
+                let out_dim = *out_dim;
+                for row in out.data_mut().chunks_mut(out_dim) {
+                    for (j, v) in row.iter_mut().enumerate() {
+                        *v += bias.data_slice()[j];
+                    }
+                }
+                let _ = batch; // keep variable used for clarity
+            }
+            _ => unreachable!(),
         }
 
-        Tensor::from_vec(
-            self.neurons
-                .iter()
-                .map(|neuron| neuron.forward(inputs.clone()))
-                .collect()
-        )
+        out
     }
 }

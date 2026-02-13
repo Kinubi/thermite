@@ -1,6 +1,58 @@
 use std::ops::{
-    Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign,
+    Add,
+    AddAssign,
+    Div,
+    DivAssign,
+    Index,
+    IndexMut,
+    Mul,
+    MulAssign,
+    Neg,
+    Sub,
+    SubAssign,
 };
+
+enum TensorPushItem {
+    Scalar(f64),
+    Row(Vec<f64>),
+}
+
+mod sealed {
+    pub trait Sealed {}
+}
+
+pub trait TensorPush: sealed::Sealed {
+    fn push_into(self, tensor: &mut Tensor);
+}
+
+impl sealed::Sealed for f64 {}
+impl TensorPush for f64 {
+    fn push_into(self, tensor: &mut Tensor) {
+        tensor.push_item(TensorPushItem::Scalar(self));
+    }
+}
+
+impl sealed::Sealed for Vec<f64> {}
+impl TensorPush for Vec<f64> {
+    fn push_into(self, tensor: &mut Tensor) {
+        tensor.push_item(TensorPushItem::Row(self));
+    }
+}
+
+impl sealed::Sealed for Tensor {}
+impl TensorPush for Tensor {
+    fn push_into(self, tensor: &mut Tensor) {
+        match self.shape.as_slice() {
+            [n] => {
+                if self.data.len() != *n {
+                    panic!("Invalid 1D tensor: shape/data mismatch");
+                }
+                tensor.push_item(TensorPushItem::Row(self.data));
+            }
+            _ => panic!("Only 1D tensors can be pushed as rows"),
+        }
+    }
+}
 
 pub trait TensorNest {
     fn infer_shape(&self) -> Vec<usize>;
@@ -186,6 +238,10 @@ impl Tensor {
         &self.data
     }
 
+    pub fn data_mut(&mut self) -> &mut Vec<f64> {
+        &mut self.data
+    }
+
     pub fn data_slice(&self) -> &[f64] {
         &self.data
     }
@@ -217,6 +273,127 @@ impl Tensor {
 
     pub fn narrow(&self, axis: usize, start: usize, len: usize) -> TensorView<'_> {
         self.view().narrow(axis, start, len)
+    }
+
+    pub fn transpose(&self) -> Tensor {
+        self.view().transpose2().to_owned()
+    }
+
+    pub fn matmul(&self, rhs: &Tensor) -> Tensor {
+        match (self.shape.as_slice(), rhs.shape.as_slice()) {
+            ([], []) => Tensor::scalar(self.data[0] * rhs.data[0]),
+            ([k], [k2]) => {
+                if k != k2 {
+                    panic!("Shape mismatch for dot: {:?} vs {:?}", self.shape, rhs.shape);
+                }
+                Tensor::scalar(
+                    self.data
+                        .iter()
+                        .zip(rhs.data.iter())
+                        .map(|(a, b)| a * b)
+                        .sum()
+                )
+            }
+            ([k], [k2, n]) => {
+                if k != k2 {
+                    panic!("Shape mismatch for vec-mat: {:?} vs {:?}", self.shape, rhs.shape);
+                }
+                let mut out = vec![0.0; *n];
+                for j in 0..*n {
+                    let mut sum = 0.0;
+                    for i in 0..*k {
+                        sum += self.data[i] * rhs.data[i * *n + j];
+                    }
+                    out[j] = sum;
+                }
+                Tensor::from_vec(out)
+            }
+            ([m, k], [k2]) => {
+                if k != k2 {
+                    panic!("Shape mismatch for mat-vec: {:?} vs {:?}", self.shape, rhs.shape);
+                }
+                let mut out = vec![0.0; *m];
+                for i in 0..*m {
+                    let mut sum = 0.0;
+                    for j in 0..*k {
+                        sum += self.data[i * *k + j] * rhs.data[j];
+                    }
+                    out[i] = sum;
+                }
+                Tensor::from_vec(out)
+            }
+            ([m, k], [k2, n]) => {
+                if k != k2 {
+                    panic!("Shape mismatch for matmul: {:?} vs {:?}", self.shape, rhs.shape);
+                }
+
+                let mut out = vec![0.0; (*m) * (*n)];
+                for i in 0..*m {
+                    for j in 0..*n {
+                        let mut sum = 0.0;
+                        for p in 0..*k {
+                            sum += self.data[i * *k + p] * rhs.data[p * *n + j];
+                        }
+                        out[i * *n + j] = sum;
+                    }
+                }
+
+                Tensor::new(out, vec![*m, *n])
+            }
+            _ =>
+                panic!(
+                    "matmul only supports rank 0/1/2 tensors (got {:?} and {:?})",
+                    self.shape,
+                    rhs.shape
+                ),
+        }
+    }
+
+    pub fn push<I: TensorPush>(&mut self, item: I) {
+        item.push_into(self);
+    }
+
+    fn push_item(&mut self, item: TensorPushItem) {
+        match (self.shape.len(), item) {
+            (1, TensorPushItem::Scalar(value)) => {
+                let n = self.shape[0];
+                self.data.push(value);
+                self.shape[0] = n + 1;
+                self.strides = Self::strides_of(&self.shape);
+            }
+            (2, TensorPushItem::Row(row)) => {
+                let rows = self.shape[0];
+                let cols = self.shape[1];
+                let row_len = row.len();
+
+                if cols == 0 {
+                    self.shape[1] = row_len;
+                }
+
+                if row_len != self.shape[1] {
+                    panic!("Row length {} does not match tensor cols {}", row_len, self.shape[1]);
+                }
+
+                self.data.extend(row);
+                self.shape[0] = rows + 1;
+                self.strides = Self::strides_of(&self.shape);
+            }
+            (_, TensorPushItem::Scalar(_)) => {
+                panic!("push(scalar) is only defined for 1D tensors")
+            }
+            (_, TensorPushItem::Row(_)) => panic!("push(row) is only defined for 2D tensors"),
+        }
+    }
+
+    pub fn extend_from_slice(&mut self, values: &[f64]) {
+        match self.shape.as_slice() {
+            [n] => {
+                self.data.extend_from_slice(values);
+                self.shape[0] = n + values.len();
+                self.strides = Self::strides_of(&self.shape);
+            }
+            _ => panic!("extend_from_slice is only defined for 1D tensors"),
+        }
     }
 
     fn flat_index(&self, indices: &[usize]) -> usize {
@@ -574,8 +751,7 @@ impl<'a, 'b> Add<&'b Tensor> for &'a Tensor {
 
     fn add(self, rhs: &'b Tensor) -> Tensor {
         assert_same_shape(self, rhs);
-        let data = self
-            .data
+        let data = self.data
             .iter()
             .zip(rhs.data.iter())
             .map(|(a, b)| a + b)
@@ -589,8 +765,7 @@ impl<'a, 'b> Sub<&'b Tensor> for &'a Tensor {
 
     fn sub(self, rhs: &'b Tensor) -> Tensor {
         assert_same_shape(self, rhs);
-        let data = self
-            .data
+        let data = self.data
             .iter()
             .zip(rhs.data.iter())
             .map(|(a, b)| a - b)
@@ -604,8 +779,7 @@ impl<'a, 'b> Mul<&'b Tensor> for &'a Tensor {
 
     fn mul(self, rhs: &'b Tensor) -> Tensor {
         assert_same_shape(self, rhs);
-        let data = self
-            .data
+        let data = self.data
             .iter()
             .zip(rhs.data.iter())
             .map(|(a, b)| a * b)
@@ -619,8 +793,7 @@ impl<'a, 'b> Div<&'b Tensor> for &'a Tensor {
 
     fn div(self, rhs: &'b Tensor) -> Tensor {
         assert_same_shape(self, rhs);
-        let data = self
-            .data
+        let data = self.data
             .iter()
             .zip(rhs.data.iter())
             .map(|(a, b)| a / b)
@@ -669,7 +842,10 @@ impl<'a> Add<f64> for &'a Tensor {
     type Output = Tensor;
 
     fn add(self, rhs: f64) -> Tensor {
-        let data = self.data.iter().map(|a| a + rhs).collect();
+        let data = self.data
+            .iter()
+            .map(|a| a + rhs)
+            .collect();
         Tensor::new(data, self.shape.clone())
     }
 }
@@ -678,7 +854,10 @@ impl<'a> Sub<f64> for &'a Tensor {
     type Output = Tensor;
 
     fn sub(self, rhs: f64) -> Tensor {
-        let data = self.data.iter().map(|a| a - rhs).collect();
+        let data = self.data
+            .iter()
+            .map(|a| a - rhs)
+            .collect();
         Tensor::new(data, self.shape.clone())
     }
 }
@@ -687,7 +866,10 @@ impl<'a> Mul<f64> for &'a Tensor {
     type Output = Tensor;
 
     fn mul(self, rhs: f64) -> Tensor {
-        let data = self.data.iter().map(|a| a * rhs).collect();
+        let data = self.data
+            .iter()
+            .map(|a| a * rhs)
+            .collect();
         Tensor::new(data, self.shape.clone())
     }
 }
@@ -696,7 +878,10 @@ impl<'a> Div<f64> for &'a Tensor {
     type Output = Tensor;
 
     fn div(self, rhs: f64) -> Tensor {
-        let data = self.data.iter().map(|a| a / rhs).collect();
+        let data = self.data
+            .iter()
+            .map(|a| a / rhs)
+            .collect();
         Tensor::new(data, self.shape.clone())
     }
 }
@@ -937,11 +1122,47 @@ mod tests {
     fn view_flat_indexed_counts_in_logical_order() {
         let t = Tensor::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
         let v = t.view().transpose2();
-        let got: Vec<(usize, f64)> = v.iter_flat_indexed().map(|(i, v)| (i, *v)).collect();
-        assert_eq!(
-            got,
-            vec![(0, 1.0), (1, 4.0), (2, 2.0), (3, 5.0), (4, 3.0), (5, 6.0)]
-        );
+        let got: Vec<(usize, f64)> = v
+            .iter_flat_indexed()
+            .map(|(i, v)| (i, *v))
+            .collect();
+        assert_eq!(got, vec![(0, 1.0), (1, 4.0), (2, 2.0), (3, 5.0), (4, 3.0), (5, 6.0)]);
+    }
+
+    #[test]
+    fn tensor_push_and_extend_1d() {
+        let mut t = Tensor::from_vec(vec![1.0, 2.0]);
+        t.push(3.0);
+        assert_eq!(t.shape_slice(), &[3]);
+        assert_eq!(t.data_slice(), &[1.0, 2.0, 3.0]);
+
+        t.extend_from_slice(&[4.0, 5.0]);
+        assert_eq!(t.shape_slice(), &[5]);
+        assert_eq!(t.data_slice(), &[1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(t.strides(), &[1]);
+    }
+
+    #[test]
+    fn tensor_push_row_2d() {
+        let mut t = Tensor::zeros(vec![0, 0]);
+        t.push(Tensor::from_vec(vec![1.0, 2.0, 3.0]));
+        t.push(Tensor::from_vec(vec![4.0, 5.0, 6.0]));
+        assert_eq!(t.shape_slice(), &[2, 3]);
+        assert_eq!(t.data_slice(), &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    }
+
+    #[test]
+    fn matmul_vector_matrix_and_matrix_vector() {
+        let v = Tensor::from_vec(vec![1.0, 2.0]);
+        let m = Tensor::new(vec![3.0, 4.0, 5.0, 6.0], vec![2, 2]);
+
+        let vm = v.matmul(&m);
+        assert_eq!(vm.shape_slice(), &[2]);
+        assert_eq!(vm.data_slice(), &[13.0, 16.0]);
+
+        let mv = m.matmul(&v);
+        assert_eq!(mv.shape_slice(), &[2]);
+        assert_eq!(mv.data_slice(), &[11.0, 17.0]);
     }
 }
 

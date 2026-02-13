@@ -2,6 +2,8 @@ use net::layer::Linear;
 use thermite::net::neuron::Neuron;
 use thermite::net::layer::Layer;
 use thermite::math::tensor::Tensor;
+use net::activation::Step;
+use net::activation::Activation;
 fn main() {
     let input_1 = Tensor::new(vec![0.2, 0.8, -0.5, 1.0], vec![4]);
     let input_2 = Tensor::from_vec(vec![0.5, -0.91, 0.26, -0.5]);
@@ -18,5 +20,8 @@ fn main() {
     let batch = Tensor::from_vec2(
         vec![vec![1.0, 2.0, 3.0, 2.5], vec![2.0, 5.0, -1.0, 2.0], vec![-1.5, 2.7, 3.3, -0.8]]
     );
-    println!("Batch output: {:?}", layer.forward(batch));
+    let batch_output = layer.forward(batch.clone());
+    println!("Batch output: {:?}", batch_output);
+    let activation_output = Step::new().forward(batch_output);
+    println!("Activation output: {:?}", activation_output);
 }
