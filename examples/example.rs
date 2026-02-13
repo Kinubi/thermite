@@ -1,13 +1,17 @@
+use net::layer::Linear;
 use thermite::net::neuron::Neuron;
 use thermite::net::layer::Layer;
+use thermite::math::tensor::Tensor;
 fn main() {
-    let neuron_1 = Neuron::new(vec![0.2, 0.8, -0.5, 1.0], 2.0);
-    let neuron_2 = Neuron::new(vec![0.5, -0.91, 0.26, -0.5], 3.0);
-    let neuron_3 = Neuron::new(vec![-0.26, -0.27, 0.17, 0.87], 0.5);
-    let mut layer = Layer::default();
+    let input_1 = Tensor::new(vec![1.0, 2.0, 3.0, 2.5], vec![4]);
+    let input_2 = Tensor::from_vec(vec![0.5, -0.91, 0.26, -0.5]);
+    let neuron_1 = Neuron::new(input_1, 2.0);
+    let neuron_2 = Neuron::new(input_2, 3.0);
+    let neuron_3 = Neuron::new(Tensor::from_vec(vec![-0.26, -0.27, 0.17, 0.87]), 0.5);
+    let mut layer = Linear::default();
     layer.add_neuron(neuron_1);
     layer.add_neuron(neuron_2);
     layer.add_neuron(neuron_3);
-    let output = layer.forward(vec![1.0, 2.0, 3.0, 2.5]);
+    let output = layer.forward(Tensor::from_vec(vec![1.0, 2.0, 3.0, 2.5]));
     println!("Output: {:?}", output);
 }
