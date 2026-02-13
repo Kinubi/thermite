@@ -2,7 +2,7 @@ use net::layer::Linear;
 use thermite::net::neuron::Neuron;
 use thermite::net::layer::Layer;
 use thermite::math::tensor::Tensor;
-use net::activation::Step;
+use net::activation::Softmax;
 use net::activation::Activation;
 fn main() {
     let input_1 = Tensor::new(vec![0.2, 0.8, -0.5, 1.0], vec![4]);
@@ -22,6 +22,6 @@ fn main() {
     );
     let batch_output = layer.forward(batch.clone());
     println!("Batch output: {:?}", batch_output);
-    let activation_output = Step::new().forward(batch_output);
+    let activation_output = Softmax::new().forward(batch_output);
     println!("Activation output: {:?}", activation_output);
 }

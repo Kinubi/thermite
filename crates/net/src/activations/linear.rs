@@ -1,30 +1,26 @@
 use math::tensor::Tensor;
 use crate::activation::Activation;
-pub struct Step;
+pub struct Linear;
 
-impl Step {
+impl Linear {
     pub fn new() -> Self {
-        Step
+        Linear
     }
 }
 
-impl Activation for Step {
+impl Activation for Linear {
     fn default() -> Self {
-        Step
+        Linear
     }
 
     fn forward(&self, inputs: Tensor) -> Tensor {
         let output = inputs
             .iter()
             .map(|input| {
-                if *input > 0.0 {
-                    return 1.0;
-                } else {
-                    return 0.0;
-                }
+                return *input;
             })
             .collect();
 
-        Tensor::from_vec(output)
+        Tensor::new(output, inputs.shape().to_vec())
     }
 }
