@@ -1,0 +1,16 @@
+[package]
+name = "thermite"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["math", "optim"]
+
+[dependencies]
+net = { path = "crates/net" }
+math = { path = "crates/math", optional = true }
+optim = { path = "crates/optim", optional = true }
+
+
+[[example]]
+name = "example"
