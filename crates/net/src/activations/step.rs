@@ -1,5 +1,5 @@
-use math::tensor::Tensor;
 use crate::activation::Activation;
+use ndarray::ArrayD;
 pub struct Step;
 
 impl Step {
@@ -13,18 +13,7 @@ impl Activation for Step {
         Step
     }
 
-    fn forward(&self, inputs: Tensor) -> Tensor {
-        let output = inputs
-            .iter()
-            .map(|input| {
-                if *input > 0.0 {
-                    return 1.0;
-                } else {
-                    return 0.0;
-                }
-            })
-            .collect();
-
-        Tensor::from_vec(output)
+    fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
+        inputs.mapv(|input| if input > 0.0 { 1.0 } else { 0.0 })
     }
 }

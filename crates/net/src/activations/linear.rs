@@ -1,5 +1,5 @@
-use math::tensor::Tensor;
 use crate::activation::Activation;
+use ndarray::ArrayD;
 pub struct Linear;
 
 impl Linear {
@@ -13,14 +13,7 @@ impl Activation for Linear {
         Linear
     }
 
-    fn forward(&self, inputs: Tensor) -> Tensor {
-        let output = inputs
-            .iter()
-            .map(|input| {
-                return *input;
-            })
-            .collect();
-
-        Tensor::new(output, inputs.shape().to_vec())
+    fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
+        inputs
     }
 }

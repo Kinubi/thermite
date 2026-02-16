@@ -1,8 +1,8 @@
 use ndarray::ArrayD;
 
-pub use crate::loss_functions::categorical_cross_entropy::CategoricalCrossEntropy;
+pub use crate::optimisers::Adam;
 
-pub trait Loss {
+pub trait Optimiser {
     fn default() -> Self;
     fn forward(&self, inputs: ArrayD<f64>, targets: ArrayD<f64>) -> ArrayD<f64>;
 }

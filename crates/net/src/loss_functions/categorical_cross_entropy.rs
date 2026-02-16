@@ -1,5 +1,5 @@
 use crate::loss::Loss;
-use math::tensor::Tensor;
+use ndarray::{ arr1, ArrayD };
 pub struct CategoricalCrossEntropy;
 
 impl CategoricalCrossEntropy {
@@ -13,7 +13,7 @@ impl Loss for CategoricalCrossEntropy {
         Self
     }
 
-    fn forward(&self, inputs: Tensor, targets: Tensor) -> Tensor {
+    fn forward(&self, inputs: ArrayD<f64>, targets: ArrayD<f64>) -> ArrayD<f64> {
         if inputs.shape() != targets.shape() {
             panic!("Inputs and targets must have the same shape");
         }
@@ -36,32 +36,43 @@ impl Loss for CategoricalCrossEntropy {
             loss -= *target * p.ln();
         }
 
-        Tensor::from_vec(vec![loss / (batch_size as f64)])
+        arr1(&[loss / (batch_size as f64)]).into_dyn()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ndarray::{ arr1, arr2 };
 
     #[test]
     fn test_categorical_cross_entropy() {
         let loss_fn = CategoricalCrossEntropy::new();
-        let inputs = Tensor::from_vec(vec![0.1, 0.5, 0.4]);
-        let targets = Tensor::from_vec(vec![0.0, 1.0, 0.0]);
+        let inputs = arr1(&[0.1, 0.5, 0.4]).into_dyn();
+        let targets = arr1(&[0.0, 1.0, 0.0]).into_dyn();
         let loss = loss_fn.forward(inputs, targets);
         let expected = -(0.5_f64).ln();
-        assert!((loss.get(vec![0]) - expected).abs() < 1e-6);
+        assert!((loss[[0]] - expected).abs() < 1e-12);
     }
 
     #[test]
     fn test_categorical_cross_entropy_batch() {
         let loss_fn = CategoricalCrossEntropy::new();
-        let inputs = Tensor::from_vec2(vec![vec![0.1, 0.5, 0.4], vec![0.8, 0.1, 0.1]]);
-        let targets = Tensor::from_vec2(vec![vec![0.0, 1.0, 0.0], vec![1.0, 0.0, 0.0]]);
+        let inputs = arr2(
+            &[
+                [0.1, 0.5, 0.4],
+                [0.8, 0.1, 0.1],
+            ]
+        ).into_dyn();
+        let targets = arr2(
+            &[
+                [0.0, 1.0, 0.0],
+                [1.0, 0.0, 0.0],
+            ]
+        ).into_dyn();
 
         let loss = loss_fn.forward(inputs, targets);
         let expected = (-(0.5_f64).ln() - (0.8_f64).ln()) / 2.0;
-        assert!((loss.get(vec![0]) - expected).abs() < 1e-6);
+        assert!((loss[[0]] - expected).abs() < 1e-12);
     }
 }

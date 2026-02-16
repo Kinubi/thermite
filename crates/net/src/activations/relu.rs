@@ -1,5 +1,5 @@
-use math::tensor::Tensor;
 use crate::activation::Activation;
+use ndarray::ArrayD;
 
 pub struct ReLU;
 
@@ -14,12 +14,7 @@ impl Activation for ReLU {
         ReLU
     }
 
-    fn forward(&self, inputs: Tensor) -> Tensor {
-        let output = inputs
-            .iter()
-            .map(|input| { input.max(0.0) })
-            .collect();
-
-        Tensor::new(output, inputs.shape().to_vec())
+    fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
+        inputs.mapv(|input| input.max(0.0))
     }
 }

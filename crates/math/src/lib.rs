@@ -1,1 +1,1 @@
-pub mod tensor;
+pub use ndarray;

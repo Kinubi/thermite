@@ -1,5 +1,5 @@
-use math::tensor::Tensor;
 use crate::activation::Activation;
+use ndarray::ArrayD;
 pub struct Sigmoid;
 
 impl Sigmoid {
@@ -13,12 +13,7 @@ impl Activation for Sigmoid {
         Sigmoid
     }
 
-    fn forward(&self, inputs: Tensor) -> Tensor {
-        let output = inputs
-            .iter()
-            .map(|input| { 1.0 / (1.0 + (-*input).exp()) })
-            .collect();
-
-        Tensor::new(output, inputs.shape().to_vec())
+    fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
+        inputs.mapv(|input| 1.0 / (1.0 + (-input).exp()))
     }
 }

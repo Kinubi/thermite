@@ -1,5 +1,5 @@
-use math::tensor::Tensor;
 use crate::activation::Activation;
+use ndarray::{ Array1, ArrayD, Ix1, Ix2 };
 pub struct Softmax;
 
 impl Softmax {
@@ -13,35 +13,36 @@ impl Activation for Softmax {
         Softmax
     }
 
-    fn forward(&self, inputs: Tensor) -> Tensor {
-        match inputs.shape_slice() {
-            [_n] => {
-                let max = inputs
-                    .iter()
-                    .copied()
-                    .fold(f64::NEG_INFINITY, f64::max);
-                let sum: f64 = inputs.iter().map(|&x| (x - max).exp()).sum();
-                let out: Vec<f64> = inputs.iter().map(|&x| (x - max).exp() / sum).collect();
-                Tensor::from_vec(out)
+    fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
+        match inputs.ndim() {
+            1 => {
+                let x = inputs.into_dimensionality::<Ix1>().expect("Softmax expects rank-1 input");
+                softmax_1d(&x).into_dyn()
             }
-            [rows, _cols] => {
-                let mut output: Vec<Vec<f64>> = Vec::with_capacity(*rows);
-                for r in 0..*rows {
-                    let row_view = inputs.narrow(0, r, 1); // shape [1, cols]
-                    let max = row_view
-                        .iter()
-                        .copied()
-                        .fold(f64::NEG_INFINITY, f64::max);
-                    let sum: f64 = row_view.iter().map(|&x| (x - max).exp()).sum();
-                    let row_out: Vec<f64> = row_view
-                        .iter()
-                        .map(|&x| (x - max).exp() / sum)
-                        .collect();
-                    output.push(row_out);
+            2 => {
+                let x = inputs.into_dimensionality::<Ix2>().expect("Softmax expects rank-2 input");
+                let mut out = x.clone();
+                for mut row in out.rows_mut() {
+                    let max = row.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                    let mut sum = 0.0;
+                    for v in &mut row {
+                        *v = (*v - max).exp();
+                        sum += *v;
+                    }
+                    for v in &mut row {
+                        *v /= sum;
+                    }
                 }
-                Tensor::from_vec2(output)
+                out.into_dyn()
             }
-            other => panic!("Softmax expects a 1D or 2D tensor, got shape {other:?}"),
+            _ => panic!("Softmax expects a 1D or 2D tensor"),
         }
     }
+}
+
+fn softmax_1d(x: &Array1<f64>) -> Array1<f64> {
+    let max = x.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let exps = x.mapv(|v| (v - max).exp());
+    let sum = exps.sum();
+    exps.mapv(|v| v / sum)
 }

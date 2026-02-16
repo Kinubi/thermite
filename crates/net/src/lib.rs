@@ -8,6 +8,10 @@ pub mod activation;
 
 pub mod activations;
 
+pub mod loss;
+
 pub mod loss_functions;
 
-pub mod loss;
+pub mod optimiser;
+
+pub mod optimisers;
