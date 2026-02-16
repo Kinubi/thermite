@@ -38,6 +38,10 @@ impl Activation for Softmax {
             _ => panic!("Softmax expects a 1D or 2D tensor"),
         }
     }
+
+    fn backward(&mut self, inputs: ArrayD<f64>, gradients: ArrayD<f64>) -> ArrayD<f64> {
+        unimplemented!("Backward pass for Softmax is not implemented yet")
+    }
 }
 
 fn softmax_1d(x: &Array1<f64>) -> Array1<f64> {

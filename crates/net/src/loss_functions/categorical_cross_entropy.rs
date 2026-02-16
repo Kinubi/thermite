@@ -38,6 +38,10 @@ impl Loss for CategoricalCrossEntropy {
 
         arr1(&[loss / (batch_size as f64)]).into_dyn()
     }
+
+    fn backward(&mut self, inputs: ArrayD<f64>, gradients: ArrayD<f64>) -> ArrayD<f64> {
+        unimplemented!("Backward pass for CategoricalCrossEntropy is not implemented yet")
+    }
 }
 
 #[cfg(test)]

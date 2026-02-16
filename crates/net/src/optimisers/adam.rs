@@ -27,4 +27,8 @@ impl Optimiser for Adam {
     fn forward(&self, _inputs: ArrayD<f64>, _targets: ArrayD<f64>) -> ArrayD<f64> {
         unimplemented!("Adam optimiser forward pass is not implemented yet")
     }
+
+    fn backward(&mut self, inputs: ArrayD<f64>, gradients: ArrayD<f64>) -> ArrayD<f64> {
+        unimplemented!("Adam optimiser backward pass is not implemented yet")
+    }
 }

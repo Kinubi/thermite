@@ -9,4 +9,5 @@ pub use crate::activations::Softmax;
 pub trait Activation {
     fn default() -> Self;
     fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64>;
+    fn backward(&mut self, inputs: ArrayD<f64>, gradients: ArrayD<f64>) -> ArrayD<f64>;
 }
