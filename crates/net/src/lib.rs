@@ -7,3 +7,7 @@ pub mod layers;
 pub mod activation;
 
 pub mod activations;
+
+pub mod loss_functions;
+
+pub mod loss;

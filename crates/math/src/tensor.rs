@@ -97,6 +97,13 @@ impl<T: TensorNest> TensorNest for Vec<T> {
 }
 
 #[derive(Clone)]
+/// Dense n-dimensional tensor stored in row-major contiguous memory.
+///
+/// Shapes are represented as a vector of dimension sizes.
+/// For example:
+/// - `vec![]` is a scalar tensor
+/// - `vec![3]` is a vector with 3 elements
+/// - `vec![2, 3]` is a 2x3 matrix
 pub struct Tensor {
     data: Vec<f64>,
     shape: Vec<usize>,
@@ -110,6 +117,9 @@ impl std::fmt::Debug for Tensor {
 }
 
 impl Tensor {
+    /// Creates a tensor from flat data and an explicit shape.
+    ///
+    /// Panics if `shape` implies a different number of elements than `data.len()`.
     pub fn new(data: Vec<f64>, shape: Vec<usize>) -> Self {
         let size = Self::numel_of(&shape);
         if size != data.len() {
@@ -123,10 +133,14 @@ impl Tensor {
         }
     }
 
+    /// Creates a scalar tensor (rank 0).
     pub fn scalar(value: f64) -> Self {
         Self::new(vec![value], Vec::new())
     }
 
+    /// Creates a tensor from arbitrarily nested `Vec` values.
+    ///
+    /// Panics for ragged input where nested lengths are inconsistent.
     pub fn from_nested<T: TensorNest>(nested: T) -> Self {
         let shape = nested.infer_shape();
         let mut data = Vec::with_capacity(Self::numel_of(&shape));
@@ -134,11 +148,15 @@ impl Tensor {
         Self::new(data, shape)
     }
 
+    /// Creates a rank-1 tensor from a flat vector.
     pub fn from_vec(data: Vec<f64>) -> Self {
         let len = data.len();
         Self::new(data, vec![len])
     }
 
+    /// Creates a rank-2 tensor from rows.
+    ///
+    /// Panics if row lengths are not equal.
     pub fn from_vec2(rows: Vec<Vec<f64>>) -> Self {
         let row_count = rows.len();
         let col_count = rows
@@ -160,11 +178,13 @@ impl Tensor {
         Self::new(data, vec![row_count, col_count])
     }
 
+    /// Creates a tensor filled with `0.0` for the given shape.
     pub fn zeros(shape: Vec<usize>) -> Self {
         let size = Self::numel_of(&shape);
         Self::new(vec![0.0; size], shape)
     }
 
+    /// Creates a tensor filled with `1.0` for the given shape.
     pub fn ones(shape: Vec<usize>) -> Self {
         let size = Self::numel_of(&shape);
         Self::new(vec![1.0; size], shape)
@@ -179,18 +199,22 @@ impl Tensor {
         self.strides = Self::strides_of(&self.shape);
     }
 
+    /// Returns the tensor rank (number of dimensions).
     pub fn rank(&self) -> usize {
         self.shape.len()
     }
 
+    /// Returns total number of stored elements.
     pub fn numel(&self) -> usize {
         self.data.len()
     }
 
+    /// Returns a copied element value at the given indices.
     pub fn get(&self, indices: Vec<usize>) -> f64 {
         *self.get_ref(&indices)
     }
 
+    /// Returns a shared reference to an element at the given indices.
     pub fn get_ref(&self, indices: &[usize]) -> &f64 {
         let flat_index = self.flat_index(indices);
         &self.data[flat_index]
@@ -258,6 +282,7 @@ impl Tensor {
         &self.strides
     }
 
+    /// Returns an immutable view over the tensor storage and layout.
     pub fn view(&self) -> TensorView<'_> {
         TensorView {
             data: &self.data,
@@ -271,6 +296,7 @@ impl Tensor {
         self.data.iter().enumerate()
     }
 
+    /// Returns a narrowed view along `axis` from `start` with length `len`.
     pub fn narrow(&self, axis: usize, start: usize, len: usize) -> TensorView<'_> {
         self.view().narrow(axis, start, len)
     }
