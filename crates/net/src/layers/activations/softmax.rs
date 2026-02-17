@@ -1,4 +1,4 @@
-use crate::activation::Activation;
+use crate::layer::Layer;
 use ndarray::ArrayD;
 pub struct Softmax;
 
@@ -8,11 +8,7 @@ impl Softmax {
     }
 }
 
-impl Activation for Softmax {
-    fn default() -> Self {
-        Softmax
-    }
-
+impl Layer for Softmax {
     fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
         let input_shape = inputs.shape().to_vec();
         if input_shape.is_empty() {

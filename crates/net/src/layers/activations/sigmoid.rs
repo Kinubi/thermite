@@ -1,4 +1,4 @@
-use crate::activation::Activation;
+use crate::layer::Layer;
 use ndarray::ArrayD;
 pub struct Sigmoid;
 
@@ -8,11 +8,7 @@ impl Sigmoid {
     }
 }
 
-impl Activation for Sigmoid {
-    fn default() -> Self {
-        Sigmoid
-    }
-
+impl Layer for Sigmoid {
     fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
         inputs.mapv(|input| 1.0 / (1.0 + (-input).exp()))
     }

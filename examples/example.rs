@@ -1,22 +1,21 @@
-use net::layer::Linear;
-use thermite::net::neuron::Neuron;
 use thermite::net::layer::Layer;
-use net::activation::Softmax;
-use net::activation::Activation;
-use net::loss::CategoricalCrossEntropy;
-use net::loss::Loss;
+use thermite::net::layers::{ Linear, Softmax };
+use thermite::net::loss::{ CategoricalCrossEntropy, Loss };
+use thermite::net::model::Sequential;
 use thermite::math::ndarray::{ arr1, arr2 };
 
 fn main() {
-    let input_1 = arr1(&[0.2, 0.8, -0.5, 1.0]);
-    let input_2 = arr1(&[0.5, -0.91, 0.26, -0.5]);
-    let neuron_1 = Neuron::new(input_1, 2.0);
-    let neuron_2 = Neuron::new(input_2, 3.0);
-    let neuron_3 = Neuron::new(arr1(&[-0.26, -0.27, 0.17, 0.87]), 0.5);
-    let mut layer = Linear::default();
-    layer.add_neuron(neuron_1);
-    layer.add_neuron(neuron_2);
-    layer.add_neuron(neuron_3);
+    let mut model = Sequential::new();
+    model.add_module(Linear::new(4, 3));
+    model.add_module(Softmax::new());
+
+    println!("Training mode: {}", model.is_training());
+    model.eval();
+    println!("Training mode after eval(): {}", model.is_training());
+    model.train();
+    println!("Training mode after train(): {}", model.is_training());
+
+    let layer = Linear::new(4, 3);
     let output = layer.forward(arr1(&[1.0, 2.0, 3.0, 2.5]).into_dyn());
     println!("Output: {:?}", output);
 
@@ -27,10 +26,8 @@ fn main() {
             [-1.5, 2.7, 3.3, -0.8],
         ]
     ).into_dyn();
-    let batch_output = layer.forward(batch.clone());
-    println!("Batch output: {:?}", batch_output);
-    let activation_output = Softmax::new().forward(batch_output);
-    println!("Activation output: {:?}", activation_output);
+    let activation_output = model.forward(batch.clone());
+    println!("Sequential output: {:?}", activation_output);
     let loss = CategoricalCrossEntropy::new().forward(
         activation_output,
         arr2(

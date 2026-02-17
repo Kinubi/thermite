@@ -3,17 +3,19 @@ use ndarray::{ arr1, Array2, ArrayD };
 
 pub struct SoftmaxCategoricalCrossEntropy;
 
-impl SoftmaxCategoricalCrossEntropy {
-    pub fn new() -> Self {
+impl Default for SoftmaxCategoricalCrossEntropy {
+    fn default() -> Self {
         Self
     }
 }
 
-impl Loss for SoftmaxCategoricalCrossEntropy {
-    fn default() -> Self {
-        Self
+impl SoftmaxCategoricalCrossEntropy {
+    pub fn new() -> Self {
+        Self::default()
     }
+}
 
+impl Loss for SoftmaxCategoricalCrossEntropy {
     fn forward(&self, inputs: ArrayD<f64>, targets: ArrayD<f64>) -> ArrayD<f64> {
         let input_shape = inputs.shape().to_vec();
         if input_shape.is_empty() {
@@ -73,9 +75,7 @@ fn softmax_last_axis(inputs: ArrayD<f64>) -> ArrayD<f64> {
         }
     }
 
-    out.into_shape_with_order(input_shape)
-        .expect("Softmax failed to reshape output")
-        .into_dyn()
+    out.into_shape_with_order(input_shape).expect("Softmax failed to reshape output").into_dyn()
 }
 
 fn targets_to_one_hot(targets: ArrayD<f64>, prob_shape: &[usize]) -> ArrayD<f64> {
@@ -136,8 +136,18 @@ mod tests {
     #[test]
     fn test_softmax_cce_forward_with_one_hot_targets() {
         let loss_fn = SoftmaxCategoricalCrossEntropy::new();
-        let logits = arr2(&[[1.0, 2.0, 0.5], [3.0, 0.5, -1.0]]).into_dyn();
-        let targets = arr2(&[[0.0, 1.0, 0.0], [1.0, 0.0, 0.0]]).into_dyn();
+        let logits = arr2(
+            &[
+                [1.0, 2.0, 0.5],
+                [3.0, 0.5, -1.0],
+            ]
+        ).into_dyn();
+        let targets = arr2(
+            &[
+                [0.0, 1.0, 0.0],
+                [1.0, 0.0, 0.0],
+            ]
+        ).into_dyn();
 
         let loss = loss_fn.forward(logits, targets);
         assert!(loss[[0]].is_finite());
@@ -147,7 +157,12 @@ mod tests {
     #[test]
     fn test_softmax_cce_backward_matches_softmax_minus_one_hot() {
         let mut loss_fn = SoftmaxCategoricalCrossEntropy::new();
-        let logits = arr2(&[[1.0, 2.0, 0.5], [3.0, 0.5, -1.0]]).into_dyn();
+        let logits = arr2(
+            &[
+                [1.0, 2.0, 0.5],
+                [3.0, 0.5, -1.0],
+            ]
+        ).into_dyn();
         let targets = arr1(&[1.0, 0.0]).into_dyn();
 
         let grad = loss_fn.backward(logits.clone(), targets);
@@ -155,11 +170,17 @@ mod tests {
             .into_shape_with_order((2, 3))
             .expect("Expected 2x3 probabilities");
 
-        let expected = (probs - arr2(&[[0.0, 1.0, 0.0], [1.0, 0.0, 0.0]])) / 2.0;
+        let expected =
+            (probs -
+                arr2(
+                    &[
+                        [0.0, 1.0, 0.0],
+                        [1.0, 0.0, 0.0],
+                    ]
+                )) /
+            2.0;
 
-        let grad = grad
-            .into_shape_with_order((2, 3))
-            .expect("Expected 2x3 gradients");
+        let grad = grad.into_shape_with_order((2, 3)).expect("Expected 2x3 gradients");
 
         for (a, b) in grad.iter().zip(expected.iter()) {
             assert!((a - b).abs() < 1e-12);

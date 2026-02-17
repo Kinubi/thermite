@@ -2,17 +2,19 @@ use crate::loss::Loss;
 use ndarray::{ arr1, Array2, ArrayD };
 pub struct CategoricalCrossEntropy;
 
-impl CategoricalCrossEntropy {
-    pub fn new() -> Self {
+impl Default for CategoricalCrossEntropy {
+    fn default() -> Self {
         Self
     }
 }
 
-impl Loss for CategoricalCrossEntropy {
-    fn default() -> Self {
-        Self
+impl CategoricalCrossEntropy {
+    pub fn new() -> Self {
+        Self::default()
     }
+}
 
+impl Loss for CategoricalCrossEntropy {
     fn forward(&self, inputs: ArrayD<f64>, targets: ArrayD<f64>) -> ArrayD<f64> {
         let input_shape = inputs.shape().to_vec();
         if input_shape.is_empty() {

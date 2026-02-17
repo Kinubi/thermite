@@ -1,4 +1,4 @@
-use crate::activation::Activation;
+use crate::layer::Layer;
 use ndarray::ArrayD;
 pub struct Linear;
 
@@ -8,11 +8,7 @@ impl Linear {
     }
 }
 
-impl Activation for Linear {
-    fn default() -> Self {
-        Linear
-    }
-
+impl Layer for Linear {
     fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
         inputs
     }

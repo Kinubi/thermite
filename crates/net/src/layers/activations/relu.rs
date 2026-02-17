@@ -1,4 +1,4 @@
-use crate::activation::Activation;
+use crate::layer::Layer;
 use ndarray::ArrayD;
 
 pub struct ReLU;
@@ -9,11 +9,7 @@ impl ReLU {
     }
 }
 
-impl Activation for ReLU {
-    fn default() -> Self {
-        ReLU
-    }
-
+impl Layer for ReLU {
     fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
         inputs.mapv(|input| input.max(0.0))
     }
