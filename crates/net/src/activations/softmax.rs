@@ -38,12 +38,45 @@ impl Activation for Softmax {
             }
         }
 
-        out.into_shape_with_order(input_shape)
-            .expect("Softmax failed to reshape output")
-            .into_dyn()
+        out.into_shape_with_order(input_shape).expect("Softmax failed to reshape output").into_dyn()
     }
 
-    fn backward(&mut self, inputs: ArrayD<f64>, gradients: ArrayD<f64>) -> ArrayD<f64> {
-        unimplemented!("Backward pass for Softmax is not implemented yet")
+    fn backward(&mut self, inputs: ArrayD<f64>, upstream_gradients: ArrayD<f64>) -> ArrayD<f64> {
+        let output_shape = inputs.shape().to_vec();
+        let grad_shape = upstream_gradients.shape().to_vec();
+
+        if output_shape.is_empty() || grad_shape.is_empty() {
+            panic!("Softmax backward expects at least rank-1 tensors");
+        }
+
+        if output_shape != grad_shape {
+            panic!("Softmax backward expects inputs and upstream gradients to have the same shape");
+        }
+
+        let classes = *output_shape.last().expect("Output shape cannot be empty");
+        let batch_size = output_shape[..output_shape.len() - 1].iter().product::<usize>().max(1);
+
+        let s = self
+            .forward(inputs)
+            .into_shape_with_order((batch_size, classes))
+            .expect("Softmax backward failed to flatten outputs");
+        let g = upstream_gradients
+            .into_shape_with_order((batch_size, classes))
+            .expect("Softmax backward failed to flatten gradients");
+
+        let mut d_inputs = s.clone();
+        for row in 0..batch_size {
+            let s_row = s.row(row);
+            let g_row = g.row(row);
+            let dot = s_row.dot(&g_row);
+            for col in 0..classes {
+                d_inputs[(row, col)] = s_row[col] * (g_row[col] - dot);
+            }
+        }
+
+        d_inputs
+            .into_shape_with_order(output_shape)
+            .expect("Softmax backward failed to reshape output gradients")
+            .into_dyn()
     }
 }

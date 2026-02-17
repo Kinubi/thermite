@@ -17,7 +17,7 @@ impl Activation for Linear {
         inputs
     }
 
-    fn backward(&mut self, inputs: ArrayD<f64>, gradients: ArrayD<f64>) -> ArrayD<f64> {
-        gradients
+    fn backward(&mut self, _inputs: ArrayD<f64>, upstream_gradients: ArrayD<f64>) -> ArrayD<f64> {
+        upstream_gradients
     }
 }

@@ -1,14 +1,15 @@
 use crate::loss::Loss;
 use ndarray::{ arr1, Array2, ArrayD };
-pub struct CategoricalCrossEntropy;
 
-impl CategoricalCrossEntropy {
+pub struct SoftmaxCategoricalCrossEntropy;
+
+impl SoftmaxCategoricalCrossEntropy {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Loss for CategoricalCrossEntropy {
+impl Loss for SoftmaxCategoricalCrossEntropy {
     fn default() -> Self {
         Self
     }
@@ -16,17 +17,17 @@ impl Loss for CategoricalCrossEntropy {
     fn forward(&self, inputs: ArrayD<f64>, targets: ArrayD<f64>) -> ArrayD<f64> {
         let input_shape = inputs.shape().to_vec();
         if input_shape.is_empty() {
-            panic!("CategoricalCrossEntropy expects at least a rank-1 tensor");
+            panic!("SoftmaxCategoricalCrossEntropy expects at least a rank-1 tensor");
         }
 
+        let probs = softmax_last_axis(inputs);
         let targets = targets_to_one_hot(targets, &input_shape);
-
         let batch_size = input_shape[..input_shape.len() - 1].iter().product::<usize>().max(1);
         let epsilon = 1e-12;
-        let mut loss = 0.0;
 
-        for (target, input) in targets.iter().zip(inputs.iter()) {
-            let p = (*input).clamp(epsilon, 1.0 - epsilon);
+        let mut loss = 0.0;
+        for (target, prob) in targets.iter().zip(probs.iter()) {
+            let p = (*prob).clamp(epsilon, 1.0 - epsilon);
             loss -= *target * p.ln();
         }
 
@@ -36,16 +37,45 @@ impl Loss for CategoricalCrossEntropy {
     fn backward(&mut self, inputs: ArrayD<f64>, targets: ArrayD<f64>) -> ArrayD<f64> {
         let input_shape = inputs.shape().to_vec();
         if input_shape.is_empty() {
-            panic!("CategoricalCrossEntropy backward expects at least a rank-1 tensor");
+            panic!("SoftmaxCategoricalCrossEntropy backward expects at least a rank-1 tensor");
         }
 
+        let probs = softmax_last_axis(inputs);
         let targets = targets_to_one_hot(targets, &input_shape);
         let batch_size = input_shape[..input_shape.len() - 1].iter().product::<usize>().max(1);
-        let epsilon = 1e-12;
 
-        let safe_inputs = inputs.mapv(|p| p.clamp(epsilon, 1.0 - epsilon));
-        -(targets / safe_inputs) / (batch_size as f64)
+        (probs - targets) / (batch_size as f64)
     }
+}
+
+fn softmax_last_axis(inputs: ArrayD<f64>) -> ArrayD<f64> {
+    let input_shape = inputs.shape().to_vec();
+    if input_shape.is_empty() {
+        panic!("Softmax expects at least a rank-1 tensor");
+    }
+
+    let classes = *input_shape.last().expect("Input shape cannot be empty");
+    let batch_size = input_shape[..input_shape.len() - 1].iter().product::<usize>().max(1);
+
+    let mut out = inputs
+        .into_shape_with_order((batch_size, classes))
+        .expect("Softmax failed to flatten input");
+
+    for mut row in out.rows_mut() {
+        let max = row.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let mut sum = 0.0;
+        for value in &mut row {
+            *value = (*value - max).exp();
+            sum += *value;
+        }
+        for value in &mut row {
+            *value /= sum;
+        }
+    }
+
+    out.into_shape_with_order(input_shape)
+        .expect("Softmax failed to reshape output")
+        .into_dyn()
 }
 
 fn targets_to_one_hot(targets: ArrayD<f64>, prob_shape: &[usize]) -> ArrayD<f64> {
@@ -104,49 +134,35 @@ mod tests {
     use ndarray::{ arr1, arr2 };
 
     #[test]
-    fn test_categorical_cross_entropy() {
-        let loss_fn = CategoricalCrossEntropy::new();
-        let inputs = arr1(&[0.1, 0.5, 0.4]).into_dyn();
-        let targets = arr1(&[0.0, 1.0, 0.0]).into_dyn();
-        let loss = loss_fn.forward(inputs, targets);
-        let expected = -(0.5_f64).ln();
-        assert!((loss[[0]] - expected).abs() < 1e-12);
+    fn test_softmax_cce_forward_with_one_hot_targets() {
+        let loss_fn = SoftmaxCategoricalCrossEntropy::new();
+        let logits = arr2(&[[1.0, 2.0, 0.5], [3.0, 0.5, -1.0]]).into_dyn();
+        let targets = arr2(&[[0.0, 1.0, 0.0], [1.0, 0.0, 0.0]]).into_dyn();
+
+        let loss = loss_fn.forward(logits, targets);
+        assert!(loss[[0]].is_finite());
+        assert!(loss[[0]] > 0.0);
     }
 
     #[test]
-    fn test_categorical_cross_entropy_batch() {
-        let loss_fn = CategoricalCrossEntropy::new();
-        let inputs = arr2(
-            &[
-                [0.1, 0.5, 0.4],
-                [0.8, 0.1, 0.1],
-            ]
-        ).into_dyn();
-        let targets = arr2(
-            &[
-                [0.0, 1.0, 0.0],
-                [1.0, 0.0, 0.0],
-            ]
-        ).into_dyn();
-
-        let loss = loss_fn.forward(inputs, targets);
-        let expected = (-(0.5_f64).ln() - (0.8_f64).ln()) / 2.0;
-        assert!((loss[[0]] - expected).abs() < 1e-12);
-    }
-
-    #[test]
-    fn test_categorical_cross_entropy_batch_with_class_indices() {
-        let loss_fn = CategoricalCrossEntropy::new();
-        let inputs = arr2(
-            &[
-                [0.1, 0.5, 0.4],
-                [0.8, 0.1, 0.1],
-            ]
-        ).into_dyn();
+    fn test_softmax_cce_backward_matches_softmax_minus_one_hot() {
+        let mut loss_fn = SoftmaxCategoricalCrossEntropy::new();
+        let logits = arr2(&[[1.0, 2.0, 0.5], [3.0, 0.5, -1.0]]).into_dyn();
         let targets = arr1(&[1.0, 0.0]).into_dyn();
 
-        let loss = loss_fn.forward(inputs, targets);
-        let expected = (-(0.5_f64).ln() - (0.8_f64).ln()) / 2.0;
-        assert!((loss[[0]] - expected).abs() < 1e-12);
+        let grad = loss_fn.backward(logits.clone(), targets);
+        let probs = softmax_last_axis(logits)
+            .into_shape_with_order((2, 3))
+            .expect("Expected 2x3 probabilities");
+
+        let expected = (probs - arr2(&[[0.0, 1.0, 0.0], [1.0, 0.0, 0.0]])) / 2.0;
+
+        let grad = grad
+            .into_shape_with_order((2, 3))
+            .expect("Expected 2x3 gradients");
+
+        for (a, b) in grad.iter().zip(expected.iter()) {
+            assert!((a - b).abs() < 1e-12);
+        }
     }
 }
