@@ -9,6 +9,7 @@ pub mod loss;
 pub mod loss_functions;
 
 pub mod optimiser;
+pub mod optim;
 
 pub mod optimisers;
 

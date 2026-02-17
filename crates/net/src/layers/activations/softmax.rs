@@ -1,15 +1,23 @@
 use crate::layer::Layer;
 use ndarray::ArrayD;
-pub struct Softmax;
+pub struct Softmax {
+    cached_outputs: Option<ArrayD<f64>>,
+}
 
 impl Softmax {
     pub fn new() -> Self {
-        Softmax
+        Softmax { cached_outputs: None }
+    }
+}
+
+impl Default for Softmax {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl Layer for Softmax {
-    fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
+    fn forward(&mut self, inputs: ArrayD<f64>) -> ArrayD<f64> {
         let input_shape = inputs.shape().to_vec();
         if input_shape.is_empty() {
             panic!("Softmax expects at least a rank-1 tensor");
@@ -34,11 +42,17 @@ impl Layer for Softmax {
             }
         }
 
-        out.into_shape_with_order(input_shape).expect("Softmax failed to reshape output").into_dyn()
+        let output = out
+            .into_shape_with_order(input_shape)
+            .expect("Softmax failed to reshape output")
+            .into_dyn();
+        self.cached_outputs = Some(output.clone());
+        output
     }
 
-    fn backward(&mut self, inputs: ArrayD<f64>, upstream_gradients: ArrayD<f64>) -> ArrayD<f64> {
-        let output_shape = inputs.shape().to_vec();
+    fn backward(&mut self, upstream_gradients: ArrayD<f64>) -> ArrayD<f64> {
+        let s_cached = self.cached_outputs.take().expect("Softmax backward called before forward");
+        let output_shape = s_cached.shape().to_vec();
         let grad_shape = upstream_gradients.shape().to_vec();
 
         if output_shape.is_empty() || grad_shape.is_empty() {
@@ -52,8 +66,7 @@ impl Layer for Softmax {
         let classes = *output_shape.last().expect("Output shape cannot be empty");
         let batch_size = output_shape[..output_shape.len() - 1].iter().product::<usize>().max(1);
 
-        let s = self
-            .forward(inputs)
+        let s = s_cached
             .into_shape_with_order((batch_size, classes))
             .expect("Softmax backward failed to flatten outputs");
         let g = upstream_gradients

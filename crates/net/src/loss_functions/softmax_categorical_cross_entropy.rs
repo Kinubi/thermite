@@ -1,11 +1,17 @@
 use crate::loss::Loss;
 use ndarray::{ arr1, Array2, ArrayD };
 
-pub struct SoftmaxCategoricalCrossEntropy;
+pub struct SoftmaxCategoricalCrossEntropy {
+    cached_inputs: Option<ArrayD<f64>>,
+    cached_targets: Option<ArrayD<f64>>,
+}
 
 impl Default for SoftmaxCategoricalCrossEntropy {
     fn default() -> Self {
-        Self
+        Self {
+            cached_inputs: None,
+            cached_targets: None,
+        }
     }
 }
 
@@ -16,7 +22,7 @@ impl SoftmaxCategoricalCrossEntropy {
 }
 
 impl Loss for SoftmaxCategoricalCrossEntropy {
-    fn forward(&self, inputs: ArrayD<f64>, targets: ArrayD<f64>) -> ArrayD<f64> {
+    fn forward(&mut self, inputs: ArrayD<f64>, targets: ArrayD<f64>) -> ArrayD<f64> {
         let input_shape = inputs.shape().to_vec();
         if input_shape.is_empty() {
             panic!("SoftmaxCategoricalCrossEntropy expects at least a rank-1 tensor");
@@ -24,6 +30,8 @@ impl Loss for SoftmaxCategoricalCrossEntropy {
 
         let probs = softmax_last_axis(inputs);
         let targets = targets_to_one_hot(targets, &input_shape);
+        self.cached_inputs = Some(probs.clone());
+        self.cached_targets = Some(targets.clone());
         let batch_size = input_shape[..input_shape.len() - 1].iter().product::<usize>().max(1);
         let epsilon = 1e-12;
 
@@ -36,14 +44,15 @@ impl Loss for SoftmaxCategoricalCrossEntropy {
         arr1(&[loss / (batch_size as f64)]).into_dyn()
     }
 
-    fn backward(&mut self, inputs: ArrayD<f64>, targets: ArrayD<f64>) -> ArrayD<f64> {
-        let input_shape = inputs.shape().to_vec();
+    fn backward(&mut self) -> ArrayD<f64> {
+        let probs = self.cached_inputs.take().expect("Loss backward called before forward");
+        let targets = self.cached_targets.take().expect("Loss backward called before forward");
+
+        let input_shape = probs.shape().to_vec();
         if input_shape.is_empty() {
             panic!("SoftmaxCategoricalCrossEntropy backward expects at least a rank-1 tensor");
         }
 
-        let probs = softmax_last_axis(inputs);
-        let targets = targets_to_one_hot(targets, &input_shape);
         let batch_size = input_shape[..input_shape.len() - 1].iter().product::<usize>().max(1);
 
         (probs - targets) / (batch_size as f64)
@@ -135,7 +144,7 @@ mod tests {
 
     #[test]
     fn test_softmax_cce_forward_with_one_hot_targets() {
-        let loss_fn = SoftmaxCategoricalCrossEntropy::new();
+        let mut loss_fn = SoftmaxCategoricalCrossEntropy::new();
         let logits = arr2(
             &[
                 [1.0, 2.0, 0.5],
@@ -165,7 +174,8 @@ mod tests {
         ).into_dyn();
         let targets = arr1(&[1.0, 0.0]).into_dyn();
 
-        let grad = loss_fn.backward(logits.clone(), targets);
+        let _ = loss_fn.forward(logits.clone(), targets);
+        let grad = loss_fn.backward();
         let probs = softmax_last_axis(logits)
             .into_shape_with_order((2, 3))
             .expect("Expected 2x3 probabilities");

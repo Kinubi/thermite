@@ -7,6 +7,10 @@ pub struct Linear {
     output_dim: usize,
     weights: Array2<f64>,
     biases: Array1<f64>,
+    grad_weights: Array2<f64>,
+    grad_biases: Array1<f64>,
+    cached_input_shape: Option<Vec<usize>>,
+    cached_inputs: Option<Array2<f64>>,
 }
 
 impl Default for Linear {
@@ -16,6 +20,10 @@ impl Default for Linear {
             output_dim: 0,
             weights: Array2::zeros((0, 0)),
             biases: Array1::zeros(0),
+            grad_weights: Array2::zeros((0, 0)),
+            grad_biases: Array1::zeros(0),
+            cached_input_shape: None,
+            cached_inputs: None,
         }
     }
 }
@@ -34,12 +42,16 @@ impl Linear {
             output_dim,
             weights,
             biases,
+            grad_weights: Array2::zeros((output_dim, input_dim)),
+            grad_biases: Array1::zeros(output_dim),
+            cached_input_shape: None,
+            cached_inputs: None,
         }
     }
 }
 
 impl Layer for Linear {
-    fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
+    fn forward(&mut self, inputs: ArrayD<f64>) -> ArrayD<f64> {
         if self.input_dim == 0 || self.output_dim == 0 {
             panic!("Linear layer is uninitialized. Use Linear::new(input_dim, output_dim)");
         }
@@ -59,6 +71,9 @@ impl Layer for Linear {
             .into_shape_with_order((batch_size.max(1), self.input_dim))
             .expect("Linear forward failed to flatten input");
 
+        self.cached_input_shape = Some(input_shape.clone());
+        self.cached_inputs = Some(x.clone());
+
         let mut out = x.dot(&self.weights.t());
         out += &self.biases;
 
@@ -69,14 +84,18 @@ impl Layer for Linear {
             .into_dyn()
     }
 
-    fn backward(&mut self, inputs: ArrayD<f64>, gradients: ArrayD<f64>) -> ArrayD<f64> {
+    fn backward(&mut self, gradients: ArrayD<f64>) -> ArrayD<f64> {
         if self.input_dim == 0 || self.output_dim == 0 {
             panic!("Linear layer is uninitialized. Use Linear::new(input_dim, output_dim)");
         }
 
-        let input_shape = inputs.shape().to_vec();
+        let input_shape = self.cached_input_shape
+            .clone()
+            .expect("Linear backward called before forward");
+        let x = self.cached_inputs.as_ref().expect("Linear backward called before forward");
+
         let grad_shape = gradients.shape().to_vec();
-        if input_shape.is_empty() || grad_shape.is_empty() {
+        if grad_shape.is_empty() {
             panic!("Linear backward expects at least rank-1 tensors");
         }
 
@@ -98,22 +117,36 @@ impl Layer for Linear {
 
         let batch_size = input_shape[..input_shape.len() - 1].iter().product::<usize>().max(1);
 
-        let x = inputs
-            .into_shape_with_order((batch_size, self.input_dim))
-            .expect("Linear backward failed to flatten input");
         let dy = gradients
             .into_shape_with_order((batch_size, self.output_dim))
             .expect("Linear backward failed to flatten gradients");
 
         let input_grads = dy.dot(&self.weights);
-        let weight_grads = dy.t().dot(&x);
+        let weight_grads = dy.t().dot(x);
         let bias_grads = dy.sum_axis(Axis(0));
 
-        self.weights -= &weight_grads;
-        self.biases -= &bias_grads;
+        self.grad_weights += &weight_grads;
+        self.grad_biases += &bias_grads;
+
         input_grads
             .into_shape_with_order(input_shape)
             .expect("Linear backward failed to reshape input gradients")
             .into_dyn()
+    }
+
+    fn zero_grad(&mut self) {
+        if self.input_dim == 0 || self.output_dim == 0 {
+            return;
+        }
+        self.grad_weights.fill(0.0);
+        self.grad_biases.fill(0.0);
+    }
+
+    fn step(&mut self, learning_rate: f64) {
+        if self.input_dim == 0 || self.output_dim == 0 {
+            return;
+        }
+        self.weights -= &(self.grad_weights.clone() * learning_rate);
+        self.biases -= &(self.grad_biases.clone() * learning_rate);
     }
 }

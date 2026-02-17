@@ -1,10 +1,16 @@
 use crate::loss::Loss;
 use ndarray::{ arr1, Array2, ArrayD };
-pub struct CategoricalCrossEntropy;
+pub struct CategoricalCrossEntropy {
+    cached_inputs: Option<ArrayD<f64>>,
+    cached_targets: Option<ArrayD<f64>>,
+}
 
 impl Default for CategoricalCrossEntropy {
     fn default() -> Self {
-        Self
+        Self {
+            cached_inputs: None,
+            cached_targets: None,
+        }
     }
 }
 
@@ -15,13 +21,16 @@ impl CategoricalCrossEntropy {
 }
 
 impl Loss for CategoricalCrossEntropy {
-    fn forward(&self, inputs: ArrayD<f64>, targets: ArrayD<f64>) -> ArrayD<f64> {
+    fn forward(&mut self, inputs: ArrayD<f64>, targets: ArrayD<f64>) -> ArrayD<f64> {
         let input_shape = inputs.shape().to_vec();
         if input_shape.is_empty() {
             panic!("CategoricalCrossEntropy expects at least a rank-1 tensor");
         }
 
         let targets = targets_to_one_hot(targets, &input_shape);
+
+        self.cached_inputs = Some(inputs.clone());
+        self.cached_targets = Some(targets.clone());
 
         let batch_size = input_shape[..input_shape.len() - 1].iter().product::<usize>().max(1);
         let epsilon = 1e-12;
@@ -35,13 +44,15 @@ impl Loss for CategoricalCrossEntropy {
         arr1(&[loss / (batch_size as f64)]).into_dyn()
     }
 
-    fn backward(&mut self, inputs: ArrayD<f64>, targets: ArrayD<f64>) -> ArrayD<f64> {
+    fn backward(&mut self) -> ArrayD<f64> {
+        let inputs = self.cached_inputs.take().expect("Loss backward called before forward");
+        let targets = self.cached_targets.take().expect("Loss backward called before forward");
+
         let input_shape = inputs.shape().to_vec();
         if input_shape.is_empty() {
             panic!("CategoricalCrossEntropy backward expects at least a rank-1 tensor");
         }
 
-        let targets = targets_to_one_hot(targets, &input_shape);
         let batch_size = input_shape[..input_shape.len() - 1].iter().product::<usize>().max(1);
         let epsilon = 1e-12;
 
@@ -107,7 +118,7 @@ mod tests {
 
     #[test]
     fn test_categorical_cross_entropy() {
-        let loss_fn = CategoricalCrossEntropy::new();
+        let mut loss_fn = CategoricalCrossEntropy::new();
         let inputs = arr1(&[0.1, 0.5, 0.4]).into_dyn();
         let targets = arr1(&[0.0, 1.0, 0.0]).into_dyn();
         let loss = loss_fn.forward(inputs, targets);
@@ -117,7 +128,7 @@ mod tests {
 
     #[test]
     fn test_categorical_cross_entropy_batch() {
-        let loss_fn = CategoricalCrossEntropy::new();
+        let mut loss_fn = CategoricalCrossEntropy::new();
         let inputs = arr2(
             &[
                 [0.1, 0.5, 0.4],
@@ -138,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_categorical_cross_entropy_batch_with_class_indices() {
-        let loss_fn = CategoricalCrossEntropy::new();
+        let mut loss_fn = CategoricalCrossEntropy::new();
         let inputs = arr2(
             &[
                 [0.1, 0.5, 0.4],

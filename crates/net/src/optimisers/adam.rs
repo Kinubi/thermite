@@ -1,5 +1,5 @@
 use crate::optimiser::Optimiser;
-use ndarray::ArrayD;
+use crate::module::Module;
 
 pub struct Adam {
     learning_rate: f64,
@@ -23,14 +23,22 @@ impl Adam {
             epsilon,
         }
     }
+
+    pub fn from_model<M: Module + ?Sized>(model: &M) -> Self {
+        <Self as Optimiser>::from_model(model)
+    }
 }
 
 impl Optimiser for Adam {
-    fn forward(&self, _inputs: ArrayD<f64>, _targets: ArrayD<f64>) -> ArrayD<f64> {
-        unimplemented!("Adam optimiser forward pass is not implemented yet")
+    fn from_model<M: Module + ?Sized>(_model: &M) -> Self {
+        Self::default()
     }
 
-    fn backward(&mut self, inputs: ArrayD<f64>, gradients: ArrayD<f64>) -> ArrayD<f64> {
-        unimplemented!("Adam optimiser backward pass is not implemented yet")
+    fn zero_grad<M: Module + ?Sized>(&mut self, model: &mut M) {
+        model.zero_grad();
+    }
+
+    fn step<M: Module + ?Sized>(&mut self, _model: &mut M) {
+        _model.step(self.learning_rate);
     }
 }

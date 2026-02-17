@@ -29,18 +29,18 @@ impl Sequential {
         self.layers.push(Box::new(module));
     }
 
-    pub fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
+    pub fn forward(&mut self, inputs: ArrayD<f64>) -> ArrayD<f64> {
         let mut output = inputs;
-        for layer in &self.layers {
+        for layer in self.layers.iter_mut() {
             output = layer.forward(output);
         }
         output
     }
 
-    pub fn backward(&mut self, inputs: ArrayD<f64>, gradients: ArrayD<f64>) -> ArrayD<f64> {
+    pub fn backward(&mut self, gradients: ArrayD<f64>) -> ArrayD<f64> {
         let mut grad = gradients;
         for layer in self.layers.iter_mut().rev() {
-            grad = layer.backward(inputs.clone(), grad);
+            grad = layer.backward(grad);
         }
         grad
     }
@@ -65,12 +65,24 @@ impl Sequential {
 }
 
 impl Layer for Sequential {
-    fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
+    fn forward(&mut self, inputs: ArrayD<f64>) -> ArrayD<f64> {
         Sequential::forward(self, inputs)
     }
 
-    fn backward(&mut self, inputs: ArrayD<f64>, gradients: ArrayD<f64>) -> ArrayD<f64> {
-        Sequential::backward(self, inputs, gradients)
+    fn backward(&mut self, gradients: ArrayD<f64>) -> ArrayD<f64> {
+        Sequential::backward(self, gradients)
+    }
+
+    fn zero_grad(&mut self) {
+        for layer in self.layers.iter_mut() {
+            layer.zero_grad();
+        }
+    }
+
+    fn step(&mut self, learning_rate: f64) {
+        for layer in self.layers.iter_mut() {
+            layer.step(learning_rate);
+        }
     }
 }
 
