@@ -1,5 +1,5 @@
 use crate::activation::Activation;
-use ndarray::{ Array1, ArrayD, Ix1, Ix2 };
+use ndarray::ArrayD;
 pub struct Softmax;
 
 impl Softmax {
@@ -14,39 +14,36 @@ impl Activation for Softmax {
     }
 
     fn forward(&self, inputs: ArrayD<f64>) -> ArrayD<f64> {
-        match inputs.ndim() {
-            1 => {
-                let x = inputs.into_dimensionality::<Ix1>().expect("Softmax expects rank-1 input");
-                softmax_1d(&x).into_dyn()
-            }
-            2 => {
-                let x = inputs.into_dimensionality::<Ix2>().expect("Softmax expects rank-2 input");
-                let mut out = x.clone();
-                for mut row in out.rows_mut() {
-                    let max = row.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-                    let mut sum = 0.0;
-                    for v in &mut row {
-                        *v = (*v - max).exp();
-                        sum += *v;
-                    }
-                    for v in &mut row {
-                        *v /= sum;
-                    }
-                }
-                out.into_dyn()
-            }
-            _ => panic!("Softmax expects a 1D or 2D tensor"),
+        let input_shape = inputs.shape().to_vec();
+        if input_shape.is_empty() {
+            panic!("Softmax expects at least a rank-1 tensor");
         }
+
+        let classes = *input_shape.last().expect("Input shape cannot be empty");
+        let batch_size = input_shape[..input_shape.len() - 1].iter().product::<usize>().max(1);
+
+        let mut out = inputs
+            .into_shape_with_order((batch_size, classes))
+            .expect("Softmax failed to flatten input");
+
+        for mut row in out.rows_mut() {
+            let max = row.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+            let mut sum = 0.0;
+            for v in &mut row {
+                *v = (*v - max).exp();
+                sum += *v;
+            }
+            for v in &mut row {
+                *v /= sum;
+            }
+        }
+
+        out.into_shape_with_order(input_shape)
+            .expect("Softmax failed to reshape output")
+            .into_dyn()
     }
 
     fn backward(&mut self, inputs: ArrayD<f64>, gradients: ArrayD<f64>) -> ArrayD<f64> {
         unimplemented!("Backward pass for Softmax is not implemented yet")
     }
-}
-
-fn softmax_1d(x: &Array1<f64>) -> Array1<f64> {
-    let max = x.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let exps = x.mapv(|v| (v - max).exp());
-    let sum = exps.sum();
-    exps.mapv(|v| v / sum)
 }

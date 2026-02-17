@@ -19,15 +19,11 @@ impl Loss for CategoricalCrossEntropy {
         }
 
         let shape = inputs.shape();
-        let rank = shape.len();
-        if rank != 1 && rank != 2 {
-            panic!(
-                "CategoricalCrossEntropy only supports rank-1 or rank-2 tensors, got shape {:?}",
-                shape
-            );
+        if shape.is_empty() {
+            panic!("CategoricalCrossEntropy expects at least a rank-1 tensor");
         }
 
-        let batch_size = if rank == 2 { shape[0] } else { 1 };
+        let batch_size = shape[..shape.len() - 1].iter().product::<usize>().max(1);
         let epsilon = 1e-12;
         let mut loss = 0.0;
 

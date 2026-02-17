@@ -1,4 +1,4 @@
-use ndarray::{ Array1, Array2, ArrayD, Axis, Ix1, Ix2 };
+use ndarray::{ Array1, Array2, ArrayD, Axis };
 
 use crate::layer::Layer;
 use crate::neuron::Neuron;
@@ -59,31 +59,29 @@ impl Layer for Linear {
         }
 
         let expected_inputs = self.layer_dim[1];
-        match inputs.ndim() {
-            1 => {
-                let x = inputs
-                    .into_dimensionality::<Ix1>()
-                    .expect("Linear forward expects rank-1 input");
-                if x.len() != expected_inputs {
-                    panic!("Input size must match the number of weights in each neuron");
-                }
-                (&self.weights.dot(&x) + &self.biases).into_dyn()
-            }
-            2 => {
-                let x = inputs
-                    .into_dimensionality::<Ix2>()
-                    .expect("Linear forward expects rank-2 input");
-                if x.shape()[1] != expected_inputs {
-                    panic!("Input size must match the number of weights in each neuron");
-                }
-                let mut out = x.dot(&self.weights.t());
-                for mut row in out.rows_mut() {
-                    row += &self.biases;
-                }
-                out.into_dyn()
-            }
-            _ => panic!("Linear forward expects a 1D or 2D tensor"),
+        let input_shape = inputs.shape().to_vec();
+        if input_shape.is_empty() {
+            panic!("Linear forward expects at least a rank-1 tensor");
         }
+
+        let in_features = *input_shape.last().expect("Input shape cannot be empty");
+        if in_features != expected_inputs {
+            panic!("Input size must match the number of weights in each neuron");
+        }
+
+        let batch_size = input_shape[..input_shape.len() - 1].iter().product::<usize>();
+        let x = inputs
+            .into_shape_with_order((batch_size.max(1), expected_inputs))
+            .expect("Linear forward failed to flatten input");
+
+        let mut out = x.dot(&self.weights.t());
+        out += &self.biases;
+
+        let mut output_shape = input_shape[..input_shape.len() - 1].to_vec();
+        output_shape.push(self.layer_dim[0]);
+        out.into_shape_with_order(output_shape)
+            .expect("Linear forward failed to reshape output")
+            .into_dyn()
     }
 
     fn backward(&mut self, inputs: ArrayD<f64>, gradients: ArrayD<f64>) -> ArrayD<f64> {
@@ -94,68 +92,49 @@ impl Layer for Linear {
         let out_dim = self.layer_dim[0];
         let in_dim = self.layer_dim[1];
 
-        // Validate shapes for x and dY.
-        let input_rank = inputs.ndim();
-        let grad_rank = gradients.ndim();
-
-        if input_rank != grad_rank {
-            panic!("Linear backward expects x and gradients to be both 1D or both 2D");
+        let input_shape = inputs.shape().to_vec();
+        let grad_shape = gradients.shape().to_vec();
+        if input_shape.is_empty() || grad_shape.is_empty() {
+            panic!("Linear backward expects at least rank-1 tensors");
         }
 
-        match input_rank {
-            1 => {
-                let x = inputs.view().into_dimensionality::<Ix1>().expect("Expected 1D input");
-                let dy = gradients
-                    .view()
-                    .into_dimensionality::<Ix1>()
-                    .expect("Expected 1D gradients");
-
-                if x.len() != in_dim {
-                    panic!("Input size must match the number of weights in each neuron");
-                }
-                if dy.len() != out_dim {
-                    panic!("Gradient size must match output dimension");
-                }
-
-                let input_grads = dy.dot(&self.weights).into_dyn();
-                let weight_grads = dy.insert_axis(Axis(1)).dot(&x.insert_axis(Axis(0)));
-                let bias_grads = dy.to_owned();
-
-                self.weights -= &weight_grads;
-                self.biases -= &bias_grads;
-
-                self.sync_neurons();
-                input_grads
-            }
-            2 => {
-                let x = inputs.view().into_dimensionality::<Ix2>().expect("Expected 2D input");
-                let dy = gradients
-                    .view()
-                    .into_dimensionality::<Ix2>()
-                    .expect("Expected 2D gradients");
-
-                if x.shape()[1] != in_dim {
-                    panic!("Input size must match the number of weights in each neuron");
-                }
-                if dy.shape()[1] != out_dim {
-                    panic!("Gradient size must match output dimension");
-                }
-                if x.shape()[0] != dy.shape()[0] {
-                    panic!("Gradient batch size must match input batch size");
-                }
-
-                let input_grads = dy.dot(&self.weights).into_dyn();
-                let weight_grads = dy.t().dot(&x);
-                let bias_grads = dy.sum_axis(Axis(0));
-
-                self.weights -= &weight_grads;
-                self.biases -= &bias_grads;
-
-                self.sync_neurons();
-                input_grads
-            }
-            _ => panic!("Linear backward expects x and gradients to be both 1D or both 2D"),
+        if input_shape.len() != grad_shape.len() {
+            panic!("Input and gradient ranks must match");
         }
+
+        if input_shape[..input_shape.len() - 1] != grad_shape[..grad_shape.len() - 1] {
+            panic!("Gradient batch shape must match input batch shape");
+        }
+
+        if *input_shape.last().expect("Input shape cannot be empty") != in_dim {
+            panic!("Input size must match the number of weights in each neuron");
+        }
+
+        if *grad_shape.last().expect("Gradient shape cannot be empty") != out_dim {
+            panic!("Gradient size must match output dimension");
+        }
+
+        let batch_size = input_shape[..input_shape.len() - 1].iter().product::<usize>().max(1);
+
+        let x = inputs
+            .into_shape_with_order((batch_size, in_dim))
+            .expect("Linear backward failed to flatten input");
+        let dy = gradients
+            .into_shape_with_order((batch_size, out_dim))
+            .expect("Linear backward failed to flatten gradients");
+
+        let input_grads = dy.dot(&self.weights);
+        let weight_grads = dy.t().dot(&x);
+        let bias_grads = dy.sum_axis(Axis(0));
+
+        self.weights -= &weight_grads;
+        self.biases -= &bias_grads;
+
+        self.sync_neurons();
+        input_grads
+            .into_shape_with_order(input_shape)
+            .expect("Linear backward failed to reshape input gradients")
+            .into_dyn()
     }
 }
 
